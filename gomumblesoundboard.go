@@ -13,11 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	_ "github.com/feuerrot/gomumblesoundboard/opus"
 	"github.com/gin-gonic/gin"
 	"layeh.com/gumble/gumble"
 	"layeh.com/gumble/gumbleffmpeg"
 	"layeh.com/gumble/gumbleutil"
-	_ "layeh.com/gumble/opus"
 )
 
 //go:embed public

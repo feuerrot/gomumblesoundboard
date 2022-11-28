@@ -42,6 +42,7 @@ func main() {
 			}
 
 			s.maxVol = float32(maxVolumeF) / 100
+			s.currVol = s.maxVol
 			fmt.Printf("maximum Volume: %.1f%%\n", s.maxVol*100)
 		}),
 
@@ -81,12 +82,14 @@ func main() {
 					}
 
 					if interaction.Volume != 0 {
-						stream.Volume = interaction.Volume
+						s.currVol = interaction.Volume
+						stream.Volume = s.currVol
 					}
 
 					if interaction.File != nil {
 						e.Client.Self.SetSelfMuted(false)
 						stream = gumbleffmpeg.New(e.Client, gumbleffmpeg.SourceFile(interaction.File.FullPath))
+						stream.Volume = s.currVol
 
 						if err := stream.Play(); err != nil {
 							return
@@ -108,9 +111,10 @@ func main() {
 }
 
 type sb struct {
-	maxVol float32
-	iChan  chan Interaction
-	mtx    sync.Mutex
+	maxVol  float32
+	currVol float32
+	iChan   chan Interaction
+	mtx     sync.Mutex
 }
 
 func OnStartListener(f func()) gumbleutil.Listener {

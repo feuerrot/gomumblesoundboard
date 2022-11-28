@@ -55,59 +55,17 @@ func main() {
 		// Setup HTTP routes and listener
 		OnStartListener(s.setupHTTP),
 
-		gumbleutil.Listener{
-			Connect: func(e *gumble.ConnectEvent) {
-				stream := gumbleffmpeg.New(e.Client, nil)
-				stream.Volume = 1
+		// Handle initial channel move
+		OnConnectListener(s.initialChannelMove),
 
-				e.Client.Self.SetSelfDeafened(true)
+		// The Soundboard itself
+		OnConnectListener(s.soundBoardListener),
 
-				fmt.Printf("Connected to %s\n", e.Client.Conn.RemoteAddr())
-				fmt.Printf("Current Channel: %s\n", e.Client.Self.Channel.Name)
-
-				if *targetChannel != "" && e.Client.Self.Channel.Name != *targetChannel {
-					channelPath := strings.Split(*targetChannel, "/")
-					target := e.Client.Self.Channel.Find(channelPath...)
-					if target == nil {
-						fmt.Printf("Cannot find channel named %s\n", *targetChannel)
-						os.Exit(1)
-					}
-					e.Client.Self.Move(target)
-					fmt.Printf("Moved to: %s\n", target.Name)
-				}
-
-				for interaction := range s.iChan {
-					if interaction.Stop == true {
-						_ = stream.Stop()
-					}
-
-					if interaction.Volume != 0 {
-						s.currVol = interaction.Volume
-						stream.Volume = s.currVol
-					}
-
-					if interaction.File != nil {
-						e.Client.Self.SetSelfMuted(false)
-						stream = gumbleffmpeg.New(e.Client, gumbleffmpeg.SourceFile(interaction.File.FullPath))
-						stream.Volume = s.currVol
-
-						if err := stream.Play(); err != nil {
-							return
-						}
-
-						go func() {
-							stream.Wait()
-							s.mtx.Unlock()
-							e.Client.Self.SetSelfDeafened(true)
-						}()
-					}
-				}
-			},
-
-			Disconnect: func(e *gumble.DisconnectEvent) {
-				os.Exit(1)
-			},
-		})
+		// Exit on disconnect
+		OnDisconnectListener(func(_ *gumble.DisconnectEvent) {
+			os.Exit(1)
+		}),
+	)
 }
 
 type sb struct {
@@ -117,11 +75,75 @@ type sb struct {
 	mtx     sync.Mutex
 }
 
+func (s *sb) initialChannelMove(e *gumble.ConnectEvent) {
+	e.Client.Self.SetSelfDeafened(true)
+
+	fmt.Printf("Connected to %s\n", e.Client.Conn.RemoteAddr())
+	fmt.Printf("Current Channel: %s\n", e.Client.Self.Channel.Name)
+
+	if *targetChannel != "" && e.Client.Self.Channel.Name != *targetChannel {
+		channelPath := strings.Split(*targetChannel, "/")
+		target := e.Client.Self.Channel.Find(channelPath...)
+		if target == nil {
+			fmt.Printf("Cannot find channel named %s\n", *targetChannel)
+			os.Exit(1)
+		}
+		e.Client.Self.Move(target)
+		fmt.Printf("Moved to: %s\n", target.Name)
+	}
+}
+
+func (s *sb) soundBoardListener(e *gumble.ConnectEvent) {
+	stream := gumbleffmpeg.New(e.Client, nil)
+	stream.Volume = 1
+
+	for interaction := range s.iChan {
+		if interaction.Stop == true {
+			_ = stream.Stop()
+		}
+
+		if interaction.Volume != 0 {
+			s.currVol = interaction.Volume
+			stream.Volume = s.currVol
+		}
+
+		if interaction.File != nil {
+			e.Client.Self.SetSelfMuted(false)
+			stream = gumbleffmpeg.New(e.Client, gumbleffmpeg.SourceFile(interaction.File.FullPath))
+			stream.Volume = s.currVol
+
+			if err := stream.Play(); err != nil {
+				return
+			}
+
+			go func() {
+				stream.Wait()
+				s.mtx.Unlock()
+				e.Client.Self.SetSelfDeafened(true)
+			}()
+		}
+	}
+}
+
 func OnStartListener(f func()) gumbleutil.Listener {
 	var o sync.Once
+	return OnConnectListener(func(_ *gumble.ConnectEvent) {
+		o.Do(f)
+	})
+}
+
+func OnConnectListener(f func(event *gumble.ConnectEvent)) gumbleutil.Listener {
 	return gumbleutil.Listener{
 		Connect: func(e *gumble.ConnectEvent) {
-			o.Do(f)
+			f(e)
+		},
+	}
+}
+
+func OnDisconnectListener(f func(event *gumble.DisconnectEvent)) gumbleutil.Listener {
+	return gumbleutil.Listener{
+		Disconnect: func(e *gumble.DisconnectEvent) {
+			f(e)
 		},
 	}
 }

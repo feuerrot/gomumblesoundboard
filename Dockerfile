@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
 COPY . .
-RUN go build -a -o soundboard ./...
+RUN go build -a -o soundboard .
 
 FROM debian:11.5-slim
 RUN apt-get -y update && apt-get -y install --no-install-recommends libopus0 ffmpeg && rm -rf /var/lib/apt/lists/*

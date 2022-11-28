@@ -30,7 +30,7 @@ require (
 	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	layeh.com/gopus v0.0.0-20210501142526-1ee02d434e32 // indirect
+	layeh.com/gopus v0.0.0-20161224163843-0ebf989153aa // indirect
 )
 
-replace layeh.com/gopus => github.com/iu0jgo/gopus v0.0.0-20221103094113-7ddffc64b02e
+replace layeh.com/gopus v0.0.0-20161224163843-0ebf989153aa => github.com/iu0jgo/gopus v0.0.0-20221103094113-7ddffc64b02e

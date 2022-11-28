@@ -201,7 +201,7 @@
     volSlider.addEventListener('change', function (ev) {
         // change volume
         var newVol = volSlider.value;
-        get('/volume/' + newVol);
+        get('/volume?vol=' + newVol);
     });
 
     // wire the stop button
@@ -219,7 +219,7 @@
             file = el.dataset.file;
 
         // start playback of the chosen sound file
-        get('/play/' + encodeURIComponent(encodeURIComponent(file))).then(function () {
+        get('/play?file=' + encodeURIComponent(file)).then(function () {
             el.classList.add("done");
             removeClassAfter(el, "done", 1000);
         }).catch(function () {

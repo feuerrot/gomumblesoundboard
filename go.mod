@@ -15,6 +15,7 @@ require (
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
 	github.com/goccy/go-json v0.9.11 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/iu0jgo/gopus v0.0.0-20221103094113-7ddffc64b02e // indirect
 	github.com/jessevdk/go-assets v0.0.0-20160921144138-4f4301a06e15 // indirect
 	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -30,7 +31,4 @@ require (
 	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	layeh.com/gopus v0.0.0-20161224163843-0ebf989153aa // indirect
 )
-
-replace layeh.com/gopus v0.0.0-20161224163843-0ebf989153aa => github.com/iu0jgo/gopus v0.0.0-20221103094113-7ddffc64b02e

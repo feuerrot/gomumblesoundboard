@@ -2,18 +2,19 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
-	"github.com/gin-gonic/gin"
 	"layeh.com/gumble/gumble"
 	"layeh.com/gumble/gumbleffmpeg"
 	"layeh.com/gumble/gumbleutil"
@@ -85,30 +86,121 @@ func scanDirs(directories []string) {
 	}
 }
 
+type Interaction struct {
+	Stop   bool
+	Volume float32
+	File   *File
+}
+
+var (
+	targetChannel   = flag.String("channel", "Root", "channel the bot will join")
+	maxVolume       = flag.String("maxvol", "100", "Set the maximum Volume in %, the volume set in the UI is multiplied with it")
+	interactionChan = make(chan Interaction)
+)
+
 func main() {
-	targetChannel := flag.String("channel", "Root", "channel the bot will join")
-	maxVolume := flag.String("maxvol", "100", "Set the maximum Volume in %, the volume set in the UI is multiplied with it")
-	var volume float32 = 1
+	var mtx sync.Mutex
+	var maxvol float32
+
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.FS(FSPrefixer("public", Assets))))
+	mux.HandleFunc("/restart", func(_ http.ResponseWriter, _ *http.Request) {
+		os.Exit(255)
+	})
+
+	mux.HandleFunc("/rescan", func(w http.ResponseWriter, r *http.Request) {
+		scanDirs(flag.Args())
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	})
+
+	mux.HandleFunc("/files.json", func(w http.ResponseWriter, r *http.Request) {
+		files := make([]File, 0)
+		for _, f := range soundfiles {
+			files = append(files, File{
+				Name:   f.Name,
+				Folder: f.Folder,
+			})
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(files)
+	})
+
+	mux.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
+		interactionChan <- Interaction{
+			Stop: true,
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	mux.HandleFunc("/volume", func(w http.ResponseWriter, r *http.Request) {
+		strVol := r.URL.Query().Get("vol")
+		vol, err := strconv.Atoi(strVol)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("couldn't convert %s to integer: %v", strVol, err), http.StatusBadRequest)
+			return
+		}
+
+		if vol < 0 && vol > 100 {
+			http.Error(w, fmt.Sprintf("number too small or too large: %s", strVol), http.StatusBadRequest)
+			return
+		}
+
+		volume := float32(vol) / 100 * maxvol
+		interactionChan <- Interaction{
+			Volume: volume,
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fmt.Sprintf("volume set to %.1f%%", volume*100)))
+	})
+
+	mux.HandleFunc("/play", func(w http.ResponseWriter, r *http.Request) {
+		unescape := r.URL.Query().Get("file")
+
+		f, ok := soundfiles[unescape]
+		if !ok {
+			http.Error(w, fmt.Sprintf("%s: file not found", unescape), http.StatusNotFound)
+			return
+		}
+
+		if !mtx.TryLock() {
+			http.Error(w, "already playing a sound, gtfo", http.StatusBadRequest)
+			return
+		}
+
+		interactionChan <- Interaction{
+			File: &f,
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fmt.Sprintf("Playing %s\n", f.FullPath)))
+	})
+
+	go func() {
+		log.Fatal(http.ListenAndServe(":3000", mux))
+	}()
 
 	gumbleutil.Main(
 		gumbleutil.AutoBitrate,
 		gumbleutil.Listener{
 			Connect: func(e *gumble.ConnectEvent) {
-				stream := gumbleffmpeg.New(e.Client, nil)
-				stream.Volume = volume
-				scanDirs(flag.Args())
-
-				e.Client.Self.SetSelfDeafened(true)
-
 				maxVolumeF, err := strconv.Atoi(*maxVolume)
 				if err != nil {
 					fmt.Printf("Invalid MaxVolume %d", maxVolumeF)
 					os.Exit(1)
 				}
-				maxvol := float32(maxVolumeF) / 100
-				fmt.Printf("maximum Volume: %.1f%%\n", maxvol*100)
 
+				maxvol = float32(maxVolumeF) / 100
+				fmt.Printf("maximum Volume: %.1f%%\n", maxvol*100)
 				fmt.Printf("GoMumbleSoundboard loaded (%d files)\n", len(soundfiles))
+
+				scanDirs(flag.Args())
+
+				stream := gumbleffmpeg.New(e.Client, nil)
+				stream.Volume = 1
+
+				e.Client.Self.SetSelfDeafened(true)
+
 				fmt.Printf("Connected to %s\n", e.Client.Conn.RemoteAddr())
 				fmt.Printf("Current Channel: %s\n", e.Client.Self.Channel.Name)
 
@@ -123,80 +215,31 @@ func main() {
 					fmt.Printf("Moved to: %s\n", target.Name)
 				}
 
-				r := gin.New()
-				s := http.FileServer(http.FS(FSPrefixer("public", Assets)))
-				r.NoRoute(func(context *gin.Context) {
-					s.ServeHTTP(context.Writer, context.Request)
-				})
-
-				r.GET("/files.json", func(c *gin.Context) {
-					files := make([]File, 0)
-					for _, f := range soundfiles {
-						files = append(files, File{
-							Name:   f.Name,
-							Folder: f.Folder,
-						})
+				for interaction := range interactionChan {
+					if interaction.Stop == true {
+						_ = stream.Stop()
 					}
 
-					// Sort keys into alphabetical order. Sick of things moving around
-					c.JSON(200, files)
-				})
-				r.GET("/play/:file", func(c *gin.Context) {
-					unescape, err := url.PathUnescape(c.Param("file"))
-					if err != nil {
-						c.AbortWithError(404, err)
-						return
-					}
-					f, ok := soundfiles[unescape]
-					if !ok {
-						c.AbortWithError(404, fmt.Errorf("%s: file not found", unescape))
-						return
-					}
-					if stream.State() == gumbleffmpeg.StatePlaying {
-						c.AbortWithError(400, fmt.Errorf("already playing a sound, gtfo"))
-						return
-					}
-					e.Client.Self.SetSelfMuted(false)
-					stream = gumbleffmpeg.New(e.Client, gumbleffmpeg.SourceFile(f.FullPath))
-					stream.Volume = volume
-					if err := stream.Play(); err != nil {
-						c.AbortWithError(400, err)
-						return
-					}
-					go func() {
-						stream.Wait()
-						e.Client.Self.SetSelfDeafened(true)
-					}()
-					c.String(200, fmt.Sprintf("Playing %s\n", f.FullPath))
-				})
-				r.GET("/volume/:volume", func(c *gin.Context) {
-					strVol := c.Param("volume")
-					vol, err := strconv.Atoi(strVol)
-					if err != nil {
-						c.AbortWithError(400, fmt.Errorf("couldn't convert %s to integer: %v", strVol, err))
-						return
+					if interaction.Volume != 0 {
+						stream.Volume = interaction.Volume
 					}
 
-					if vol < 0 && vol > 100 {
-						c.AbortWithError(400, fmt.Errorf("number too small or too large: %s", strVol))
-						return
-					}
+					if interaction.File != nil {
+						e.Client.Self.SetSelfMuted(false)
+						stream = gumbleffmpeg.New(e.Client, gumbleffmpeg.SourceFile(interaction.File.FullPath))
 
-					volume = float32(vol) / 100 * maxvol
-					c.String(200, fmt.Sprintf("volume set to %.1f%%", volume*100))
-				})
-				r.GET("/stop", func(c *gin.Context) {
-					stream.Stop()
-					c.String(200, "ok")
-				})
-				r.GET("/rescan", func(c *gin.Context) {
-					scanDirs(flag.Args())
-					c.Redirect(http.StatusTemporaryRedirect, "/")
-				})
-				r.GET("/restart", func(c *gin.Context) {
-					os.Exit(255)
-				})
-				r.Run(":3000")
+						if err := stream.Play(); err != nil {
+							return
+						}
+
+						go func() {
+							stream.Wait()
+							mtx.Unlock()
+							e.Client.Self.SetSelfDeafened(true)
+						}()
+					}
+				}
+
 			},
 			Disconnect: func(e *gumble.DisconnectEvent) {
 				os.Exit(1)

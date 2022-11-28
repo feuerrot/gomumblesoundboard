@@ -1,17 +1,18 @@
-before:
-  hooks:
-    - go mod download 
-    - go mod verify
 builds:
-  - goos:
-    - linux
+  - targets:
+      - linux_amd64
+    binary: soundboard
+
 checksum:
-  name_template: 'checksums.txt'
-snapshot:
-  name_template: "{{ .Tag }}-next"
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_checksums.txt'
+
+dockers:
+  - image_templates:
+      - "ghcr.io/feuerrot/gomumblesoundboard:latest"
+      - "ghcr.io/feuerrot/gomumblesoundboard:{{.Version}}"
+    build_flag_templates:
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/feuerrot/gomumblesoundboard.git"

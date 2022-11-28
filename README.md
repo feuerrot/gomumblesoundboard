@@ -2,7 +2,7 @@
 This is a fork of [gomumblesoundboard](https://github.com/robbi5/gomumblesoundboard), which is a soundboard for [mumble](https://www.mumble.info/).
 
 ## Requirements
-* go >= 1.14 (dunno, but probably a current one)
+* go >= 1.19
 * mumble server
 * folder with sounds
 * ffmpeg (`brew install ffmpeg` / `sudo apt-get install ffmpeg`)
@@ -45,5 +45,4 @@ MIT
 
 ## Thanks to
 * @bontibon / @layeh for [gumble](https://github.com/layeh/gumble)
-* various people for [gin](https://github.com/gin-gonic/gin)
 * @robbi5 for the [original version](https://github.com/robbi5/gomumblesoundboard) of this software

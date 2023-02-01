@@ -55,7 +55,7 @@ func (s *sb) setupHTTP() {
 			return
 		}
 
-		if vol < 0 && vol > 100 {
+		if vol < 0 || vol > 100 {
 			http.Error(w, fmt.Sprintf("number too small or too large: %s", strVol), http.StatusBadRequest)
 			return
 		}

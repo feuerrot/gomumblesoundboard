@@ -32,11 +32,11 @@ func scanDirsFunc(l string, info os.FileInfo, err error) error {
 		".flac",
 		".opus",
 		".wav",
-		".MPG",
+		".mpg",
 	}
 	validSuffixCheck := false
 	for _, s := range validSuffix {
-		if strings.HasSuffix(info.Name(), s) {
+		if strings.HasSuffix(strings.ToLower(info.Name()), s) {
 			validSuffixCheck = true
 		}
 	}

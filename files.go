@@ -33,6 +33,7 @@ func scanDirsFunc(l string, info os.FileInfo, err error) error {
 		".opus",
 		".wav",
 		".mpg",
+		".oga",
 	}
 	validSuffixCheck := false
 	for _, s := range validSuffix {
